@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"os"
 	"time"
-
+	"math/rand"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -38,10 +38,20 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprintf(w, "Healthy!")
 }
-
-func fetchDocument(client mongo.Client, database string, collection string, documentID int) {
-	coll := client.Database(database).Collection(collection)
-
+type Address struct {
+	Street string
+	City   string
+}
+type Student struct {
+	// FirstName string  `bson:"first_name,omitempty"`
+	// LastName  string  `bson:"last_name,omitempty"`
+	// Address   Address `bson:"inline"`
+	FirstName string 
+	LastName  string  
+	Address   Address 
+	Age       int
+}
+func fetchSingleDocument(coll mongo.Collection, documentID int) {
 	var result bson.M
 	err := coll.FindOne(context.TODO(), bson.D{{"id", documentID}}).Decode(&result)
 	if err == mongo.ErrNoDocuments {
@@ -79,19 +89,54 @@ func mongoDBClient() *mongo.Client {
 	return client
 }
 
+func insertSingleStudent(coll mongo.Collection, data Student) {
+	_, err := coll.InsertOne(
+		context.TODO(),
+		data)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func generateDummyStudent() Student {
+	source := rand.NewSource(time.Now().Unix())
+	random := rand.New(source) // initialize local pseudorandom generator
+
+	addressPrefix := [...]string{"Skiolds","Stor","Alfabet","Trombone"}
+	addressSuffix := [...]string{"vegen","veien","gata","gaten"}
+	cities := [...]string{"Lillestrøm","Oslo","Drammen"}
+
+	firstNames := [...]string{"Johan","Geir","Tomas","Filip"}
+	lastNames := [...]string{"Pedersen","Hansson","Ultron"}
+	ages := [...]int{20,25,35,30}
+
+	tempAddress := Address{Street: addressPrefix[random.Intn(len(addressPrefix))] + addressSuffix[random.Intn(len(addressSuffix))], City: cities[random.Intn(len(cities))]}
+	return Student{FirstName: firstNames[random.Intn(len(firstNames))], LastName: lastNames[random.Intn(len(lastNames))], Address: tempAddress, Age: ages[random.Intn(len(ages))]}
+}
+
 func main() {
 	http.HandleFunc("/health", healthHandler)
 
 	var mdbClient *mongo.Client = mongoDBClient()
-
 	mdbName := os.Getenv("MONGODB.DATABASE")
 	if mdbName == "" {
 		log.Fatal("MongoDB database name set. Verify .env file or environment variables.")
 	}
+	mdbCollection := os.Getenv("MONGODB.COLLECTION")
+	if mdbName == "" {
+		log.Fatal("MongoDB collection name set. Verify .env file or environment variables.")
+	}
+	coll := mdbClient.Database(mdbName).Collection(mdbCollection)
 
-	mdbCollection := "test"
-	fetchDocument(*mdbClient, mdbName, mdbCollection, 123)
-	// fmt.Printf("%s\n", )
+	var students [5]Student
+
+	for i := 0; i >= len(students); i++ {
+		students[i] = generateDummyStudent()
+	}
+
+	insertSingleStudent(*coll, students[0])
+
+	// fetchSingleDocument(*coll, 123)
 
 	fmt.Printf("Starting server at port 8080.\n")
 	if err := http.ListenAndServe("0.0.0.0:8080", nil); err != nil {
